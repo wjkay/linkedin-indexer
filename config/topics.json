@@ -1,0 +1,60 @@
+{
+  "regions": {
+    "nz": {
+      "name": "New Zealand",
+      "subregions": [
+        "auckland",
+        "wellington",
+        "canterbury",
+        "waikato",
+        "bay-of-plenty",
+        "otago"
+      ],
+      "topics": [
+        "rma-resource-management",
+        "property-development",
+        "freshwater-management",
+        "urban-planning",
+        "district-plans",
+        "environmental-consulting"
+      ]
+    },
+    "au": {
+      "name": "Australia",
+      "subregions": [
+        "nsw",
+        "victoria",
+        "queensland",
+        "western-australia",
+        "south-australia"
+      ],
+      "topics": [
+        "town-planning",
+        "development-applications",
+        "environmental-impact",
+        "infrastructure"
+      ]
+    },
+    "us": {
+      "name": "United States",
+      "subregions": null,
+      "topics": [
+        "zoning-regulations",
+        "environmental-compliance",
+        "real-estate-development",
+        "urban-development",
+        "sustainable-development"
+      ]
+    },
+    "global": {
+      "name": "Global",
+      "subregions": null,
+      "topics": [
+        "climate-adaptation",
+        "green-infrastructure",
+        "biodiversity",
+        "sustainability"
+      ]
+    }
+  }
+}
