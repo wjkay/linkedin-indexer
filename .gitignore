@@ -9,3 +9,4 @@ data/*.db-shm
 .DS_Store
 coverage/
 .nyc_output/
+output/

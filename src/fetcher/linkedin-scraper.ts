@@ -1,18 +1,30 @@
-import { chromium, Browser, Page } from 'playwright';
+import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import type { SearchResult } from '../types/index.js';
 
 let browser: Browser | null = null;
+let context: BrowserContext | null = null;
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export async function initBrowser(): Promise<void> {
   if (!browser) {
     browser = await chromium.launch({
       headless: process.env.HEADLESS !== 'false',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+    });
+    context = await browser.newContext({
+      userAgent: USER_AGENT,
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
     });
   }
 }
 
 export async function closeBrowser(): Promise<void> {
+  if (context) {
+    await context.close();
+    context = null;
+  }
   if (browser) {
     await browser.close();
     browser = null;
@@ -24,44 +36,60 @@ export async function searchLinkedIn(
   region: string,
   subregion?: string
 ): Promise<SearchResult[]> {
-  if (!browser) {
+  if (!browser || !context) {
     await initBrowser();
   }
 
-  const page = await browser!.newPage();
+  const page = await context!.newPage();
   const results: SearchResult[] = [];
 
   try {
-    // Build search query
+    // Build search query - use DuckDuckGo (less aggressive bot detection)
     const searchTerms = buildSearchQuery(topic, region, subregion);
-    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchTerms)}`;
+    const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(searchTerms)}`;
 
-    await page.goto(searchUrl, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000 + Math.random() * 2000); // Random delay
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000 + Math.random() * 1000);
 
-    // Extract LinkedIn results from Google search
-    const links = await page.$$eval('a[href*="linkedin.com/pulse"], a[href*="linkedin.com/posts"]', (anchors) => {
-      return anchors.map(a => {
-        const href = a.getAttribute('href') || '';
-        const text = a.textContent || '';
-        return { href, text };
-      }).filter(item => item.href.includes('linkedin.com'));
+    // Wait for results to load
+    await page.waitForSelector('[data-testid="result"]', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+
+    // Extract LinkedIn results from DuckDuckGo search
+    const links = await page.$$eval('article[data-testid="result"]', (articles) => {
+      return articles.map(article => {
+        const linkEl = article.querySelector('a[href*="linkedin.com"]') as HTMLAnchorElement;
+        if (!linkEl) return null;
+
+        const href = linkEl.getAttribute('href') || '';
+        const titleEl = article.querySelector('h2') || article.querySelector('a[data-testid="result-title-a"]');
+        const title = titleEl?.textContent?.trim() || '';
+        const snippetEl = article.querySelector('[data-result="snippet"]') || article.querySelector('span');
+        const snippet = snippetEl?.textContent?.trim() || '';
+
+        return { href, title, snippet };
+      }).filter(item => item && item.href.includes('linkedin.com'));
     });
 
     for (const link of links.slice(0, 10)) {
-      // Clean URL (remove Google redirect wrapper if present)
+      if (!link) continue;
       let url = link.href;
-      if (url.includes('/url?q=')) {
-        const match = url.match(/\/url\?q=([^&]+)/);
+
+      // Handle DuckDuckGo redirect URLs
+      if (url.includes('duckduckgo.com/l/?')) {
+        const match = url.match(/uddg=([^&]+)/);
         if (match) url = decodeURIComponent(match[1]);
       }
+
+      // Skip non-article/post URLs
+      if (!url.includes('/pulse/') && !url.includes('/posts/')) continue;
 
       const contentType = url.includes('/pulse/') ? 'article' : 'post';
 
       results.push({
         url,
-        title: link.text.slice(0, 200),
-        excerpt: '',
+        title: link.title || link.snippet.slice(0, 100),
+        excerpt: link.snippet,
         authorName: '',
         authorProfileUrl: '',
         contentType
